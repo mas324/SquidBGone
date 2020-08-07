@@ -6,9 +6,11 @@ using System.Reflection;
 using System.Xml.Serialization;
 
 using HarmonyLib;
+using QModManager.API.ModLoading;
 
 namespace SquidBGone
 {
+    [QModCore]
     public static class Patcher
     {
         public static void log(string logMessage, params string[] arg)
@@ -20,6 +22,7 @@ namespace SquidBGone
 
         public static Harmony harmony = null;
         public static Random rEngine = new Random();
+        public static ManageCreatureSpawns.SettingsManager.Settings settings = null;
 
         public static class Manager
         {
@@ -56,6 +59,7 @@ namespace SquidBGone
                                     creature.liveMixin.data.explodeOnDestroy = false;
                                 }
                                 creature.liveMixin.Kill();
+                                log("Killed {0}", creature.name);
                             }
                             else
                             {
@@ -88,6 +92,7 @@ namespace SquidBGone
             }
         }
 
+        [QModPatch]
         public static void ApplyPatches()
         {
             log("Loading... v{0}", Assembly.GetExecutingAssembly().GetName().Version.ToString());
@@ -97,6 +102,25 @@ namespace SquidBGone
             if (harmony != null)
             {
                 log("HarmonyInstance created.");
+
+                log("Reading settings.");
+                {
+                    XmlSerializer serializer = new XmlSerializer(typeof(ManageCreatureSpawns.SettingsManager.Settings));
+                    using (StreamReader reader = new StreamReader("QMods\\SquidBGone\\Settings.xml"))
+                        settings = (ManageCreatureSpawns.SettingsManager.Settings)serializer.Deserialize(reader);
+                    serializer = null;
+
+                    if (settings == null)
+                    {
+                        log("Could not load settings, exiting.");
+                        return;
+                    }
+
+                    foreach (var item in settings.UnwantedCreaturesList)
+                    {
+                        log("Loaded creature configuration: \r\n{0}", item.ToString());
+                    }
+                }
 
                 log("Patching Creature events");
                 {
@@ -119,11 +143,7 @@ namespace SquidBGone
 
                     foreach (string fn in genericFunctionsToBePatched)
                     {
-                        harmony.Patch(
-                            typeof(Creature).GetMethod(fn, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance),
-                            new HarmonyMethod(typeof(Manager).GetMethod("GenericKillCreature")),
-                            null
-                        );
+                        harmony.Patch(typeof(Creature).GetMethod(fn, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance),new HarmonyMethod(typeof(Manager).GetMethod("GenericKillCreature")),null);
                         log("Patched Creature.{0}", fn);
                     }
                     foreach (string fn in creatureActionFunctionsToBePatched)
